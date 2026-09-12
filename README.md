@@ -1,104 +1,173 @@
-# Claix API — AI Data Processing for Systems & Agents
+# Claix API & SDK — AI Document Intelligence & Memory for Agents
 
-Claix is a powerful server-to-server API designed to transform unstructured documents, images, tabular data, and raw text into strictly typed JSON formats. Built for backend integrations, automation scripts, and workflow tools like n8n, Zapier, or Make.
+Claix is a high-performance, server-to-server Document Intelligence API and Agent Memory substrate. It transforms unstructured documents (PDFs, Excel workbooks, Word docs, images, raw text/HTML) into strictly typed, validated JSON and provides persistent, queryable context for autonomous AI agents.
 
-Powered by AI, Claix acts as a **schema-driven inference engine**. It handles direct data extraction and complex semantic reasoning (Agent Mode) in a single pass—eliminating fragile OCR templates and unpredictable LLM hallucinations.
+Built for backend microservices, agentic workflows (LangGraph, CrewAI, LlamaIndex), the **Agent2Agent (A2A) protocol**, and automation engines like n8n, Make, and Zapier.
 
 🌐 **Website:** [claix.dev](https://claix.dev)  
-📄 **OpenAPI Spec (v1.5.0):** [claix.dev/openapi.yaml](https://claix.dev/openapi.yaml)
+📄 **OpenAPI Spec (v1.8.2):** [claix.dev/openapi.yaml](https://claix.dev/openapi.yaml)  
+📦 **Python SDK (PyPI):** `pip install claix`
 
 ---
 
-## ⚡ Quick Links
+## ⚡ Key Highlights
+* **Multimodal Visual Extraction:** Zero-template extraction from scanned PDFs, distorted receipt images, and multi-sheet Excel files.
+* **Deterministic Structured Outputs:** 100% schema compliance. Fields with missing document evidence return native `null` instead of hallucinations.
+* **Knowledge Spaces (`space_id`):** Group up to 50 active documents under a unified space to perform cross-document reasoning, multi-file totals, and contract-to-invoice reconciliation.
+* **Decoupled Document Context (`document_id`):** Ingest once, query on demand via lightweight REST endpoints—reducing input token costs by over 80%.
+* **Agent2Agent (A2A) Protocol Ready:** Exposes standard Agent Cards (`/.well-known/agent-card.json`) and task contracts for cross-vendor multi-agent swarms.
+* **First-Class Python SDK:** Modular tool adapters for LangChain, LangGraph, CrewAI, and LlamaIndex.
+
+---
+
+## 📑 Table of Contents
 * [Authentication](#-authentication)
-* [Base URL](#-base-url)
-* [Standard Extraction Endpoints](#-standard-extraction-endpoints)
-* [🤖 Agent Mode (Semantic Reasoning)](#-agent-mode-semantic-reasoning)
-* [Response Structures](#-response-structures)
-* [Error Codes](#-error-codes)
-* [Usage Examples](#-usage-examples)
+* [Python SDK & Agent Frameworks](#-python-sdk--agent-frameworks)
+* [API Endpoints Overview](#-api-endpoints-overview)
+  * [1. Structured Extraction Endpoints](#1-structured-extraction-endpoints)
+  * [2. Agent Mode (Semantic Reasoning)](#2-agent-mode-semantic-reasoning)
+  * [3. Context Window (Single Document QA)](#3-context-window-single-document-qa)
+  * [4. Knowledge Spaces (Cross-Document Multi-File QA)](#4-knowledge-spaces-cross-document-multi-file-qa)
+  * [5. Schema Management](#5-schema-management)
+* [🤖 Agent2Agent (A2A) Protocol Integration](#-agent2agent-a2a-protocol-integration)
+* [Response Structures & Deterministic Nulls](#-response-structures--deterministic-nulls)
+* [Error Handling](#-error-handling)
+* [Quick Code Examples](#-quick-code-examples)
 
 ---
 
 ## 🔒 Authentication
 
-All API endpoints require authentication via an API Key. You can provide this key in one of two ways:
-* **Custom Header (Recommended):** `x-api-key: YOUR_API_KEY`
-* **Bearer Token:** `Authorization: Bearer YOUR_API_KEY`
+All API calls require your private API key provided via one of the following headers:
+* **Dedicated Header (Recommended):** `x-api-key: YOUR_API_KEY`
+* **Standard Bearer Token:** `Authorization: Bearer YOUR_API_KEY`
 
 ---
 
-## 🌍 Base URL
+## 📦 Python SDK & Agent Frameworks
 
-All standard extraction endpoints are relative to the production base URL:  
-`https://claix.dev/api`
+Install the unified official Python package with optional extras:
 
-*(Note: Agent Mode endpoints use a different path structure. See the Agent Mode section below).*
+```bash
+# Core SDK (httpx + Pydantic v2)
+pip install claix
 
----
+# With LangChain & LangGraph support
+pip install claix[langchain]
 
-## 🚀 Standard Extraction Endpoints
+# With CrewAI support
+pip install claix[crewai]
 
-These endpoints perform direct data mapping based on your schema definition.
+# With all agent integrations (LangGraph, CrewAI, LlamaIndex)
+pip install claix[all]
+```
 
-### 1. Excel/CSV to JSON
-`POST /excel-json`
-* **Behavior:** Processes the first sheet of the file and returns an array of records where columns exactly match the schema properties.
-* **Request:** `multipart/form-data` containing `file` and `schema_id`.
+### Quickstart Example (Python)
 
-### 2. JSON to Excel
-`POST /json-excel`
-* **Behavior:** Generates a binary spreadsheet (`.xlsx`) with columns ordered and named exactly as defined in the schema.
-* **Request:** Accepts `multipart/form-data` or raw `application/json` (direct array, single object, or envelope with `schema_id` + `data`).
+```python
+from claix import ClaixClient
 
-### 3. PDF to JSON
-`POST /pdf-json`
-* **Behavior:** Extracts structured data from a PDF (selectable text or scanned/OCR). Treated as a single data source (returns exactly one record).
-* **Limits:** Max file size 15 MB.
-* **Request:** `multipart/form-data` containing `file` and `schema_id`.
+client = ClaixClient(api_key="YOUR_API_KEY")
 
-### 4. Document to JSON
-`POST /doc-json`
-* **Behavior:** Extracts data from text documents. Text is deterministically extracted on the server before AI inference. 
-* **Supported Formats:** `.docx`, `.txt`, `.md`, `.rtf`. *(Legacy `.doc` Word 97-2003 is NOT supported).*
-* **Limits:** Max file size 10 MB, max extracted text 300,000 characters.
-* **Request:** `multipart/form-data` containing `file` and `schema_id`.
+# 1. Extract typed JSON from a complex PDF
+result = client.extract.pdf(
+    file="invoice_2026.pdf",
+    schema_id="3c7a9f21-4b8e-4d1a-9c6f-2e0d8a5b7c4f",
+    space_id="5b9e2c14-7d3a-4f8b-9e1c-6a0d4b8f2e7c"  # Optional: group into a Space
+)
+print(result.data)
 
-### 5. Image to JSON
-`POST /img-json`
-* **Behavior:** Extracts data from the visible content of an image. If the image is illegible (blurry, bad lighting), it safely fails with a `422` error.
-* **Supported Formats:** `.jpeg`, `.jpg`, `.png`, `.webp`, `.heic`, `.heif`.
-* **Limits:** Max file size 15 MB.
-* **Request:** `multipart/form-data` containing `file` and `schema_id`.
-
-### 6. List Schemas
-`GET /schemas`
-* **Behavior:** Read-only endpoint returning all schemas created under your account (including Agent definitions). Free to query.
+# 2. Query the Knowledge Space (Cross-document reasoning)
+space_answer = client.spaces.ask(
+    space_id="5b9e2c14-7d3a-4f8b-9e1c-6a0d4b8f2e7c",
+    questions=["Which vendor billed the highest total amount across all invoices?"]
+)
+print(space_answer.ia_response)
+```
 
 ---
 
-## 🤖 Agent Mode (Semantic Reasoning)
+## 🚀 API Endpoints Overview
 
-Agent Mode allows you to embed custom logic and business rules directly into your schema. Instead of just extracting explicit data, Claix evaluates semantic questions and returns strictly typed answers (booleans, integers, exact strings) ready for your autonomous agents or backend logic.
+Base URL: `https://claix.dev/api` *(except where explicit URLs are specified)*.
 
-### Agent Endpoints
-To use Agent Mode, replace `/api/` with `/agent/` in your request path:
-* `POST https://claix.dev/agent/excel-json`
-* `POST https://claix.dev/agent/pdf-json`
-* `POST https://claix.dev/agent/doc-json`
-* `POST https://claix.dev/agent/img-json`
+### 1. Structured Extraction Endpoints
 
-### Requirements
-1. Your schema must have `is_agent_mode: true`.
-2. Your schema must contain an `agent_definition` (the rules the AI needs to evaluate).
-3. The request format (`multipart/form-data` with `file` and `schema_id`) remains exactly the same as standard endpoints.
+| Endpoint | Method | Input Formats | Max Limits | Description |
+|---|---|---|---|---|
+| `/excel-json` | `POST` | `.xlsx`, `.xls`, `.csv` | 1st sheet | Transforms spreadsheet rows into an array of typed JSON records conforming to your schema. |
+| `/json-excel` | `POST` | JSON array / envelope | — | Generates a binary `.xlsx` spreadsheet matching the schema column definitions. |
+| `/pdf-json` | `POST` | `.pdf` (text/scanned) | 15 MB | Multimodal analysis returning a single structured record. Handles visual layouts and tables. |
+| `/doc-json` | `POST` | `.docx`, `.txt`, `.md`, `.rtf` | 10 MB / 300k chars | Deterministic text extraction before AI inference. *(Legacy `.doc` is not supported).* |
+| `/img-json` | `POST` | `.jpeg`, `.jpg`, `.png`, `.webp`, `.heic`, `.heif` | 15 MB | Multimodal OCR and visual comprehension. Returns `422` if blurry or unreadable. |
+| `/txt-json` | `POST` | Raw text, HTML, XML | 300k chars | Schema-based structured extraction from raw text passed directly in the payload. |
 
 ---
 
-## 📋 Response Structures
+### 2. Agent Mode (Semantic Reasoning)
 
-### Standard Extraction Response
-All successful standard extraction requests return a standardized JSON structure:
+Agent Mode executes structured extraction **followed by a semantic reasoning phase** powered by your custom business rules.
+
+* **Endpoints:**
+  * `POST https://claix.dev/agent/excel-json`
+  * `POST https://claix.dev/agent/pdf-json`
+  * `POST https://claix.dev/agent/doc-json`
+  * `POST https://claix.dev/agent/img-json`
+  * `POST https://claix.dev/agent/txt-json`
+* **Requirements:** Schema must have `is_agent_mode: true` and a configured `agent_definition`.
+* **Output:** Returns the standard `data` array **plus** an `agent_data` object with typed boolean flags, integer evaluations, enums, or textual summaries.
+
+---
+
+### 3. Context Window (Single Document QA)
+
+When an extraction is executed with context window enabled, Claix stores the processed Markdown representation, returning a persistent `document_id`.
+
+* **Query Document:** `POST https://claix.dev/document-context/{document_id}`
+  * Body: `{ "questions": ["Question 1", "Question 2"] }` (Max 5 questions, max 400 chars each).
+  * Returns: `{ "user_ask": [...], "ia_response": [...] }`.
+* **Get Raw Content:** `GET https://claix.dev/get-document/{document_id}` *(Free)*.
+* **Delete Context:** `DELETE https://claix.dev/delete-document/{document_id}` *(Free)*.
+
+---
+
+### 4. Knowledge Spaces (Cross-Document Multi-File QA)
+
+Knowledge Spaces allow multiple active documents to be grouped under a single `space_id` for cross-file comparison, reconciliation, and aggregations.
+
+* **Create Space:** `POST https://claix.dev/create-space`  
+  * Body: `{ "name": "Vendor Operations 2026" }` ➔ Returns `space_id`. *(Free)*.
+* **Assign Docs to Space:** Pass `space_id` as an optional parameter when calling any `/api/*-json` or `/agent/*-json` endpoint.
+* **Query Space (Cross-Document QA):** `POST https://claix.dev/space-context/{space_id}`
+  * Evaluates up to **50 active documents** and **200,000 characters of context** simultaneously.
+  * Answers multi-file questions: *"Do the totals in invoice_march.pdf match the contracted budget in contract_omega.pdf?"*.
+* **Delete Space:** `DELETE https://claix.dev/delete-space/{space_id}` *(Free)*.
+
+---
+
+### 5. Schema Management
+
+* **List Schemas:** `GET https://claix.dev/api/schemas` *(Free)*.
+* **Create Schema:** `POST https://claix.dev/api/create-schema` *(Free)*.
+* **Delete Schema:** `POST https://claix.dev/api/delete-schema` or `DELETE https://claix.dev/api/delete-schema?schema_id={uuid}` *(Free)*.
+
+---
+
+## 🤖 Agent2Agent (A2A) Protocol Integration
+
+Claix natively implements the open **Agent2Agent (A2A)** specification, allowing orchestrators (such as LangGraph, CrewAI, AutoGen, and Microsoft Agent Framework) to discover skills and delegate document extraction tasks via standard JSON-RPC 2.0 / HTTPS task lifecycles.
+
+* **Public Agent Card:** `https://claix.dev/.well-known/agent-card.json`
+* **Exposed Skills:**
+  * `extract_document`: Schema-constrained extraction from binary files.
+  * `query_document_context`: Targeted single-file interrogation (`document_id`).
+  * `cross_document_reasoning`: Multi-file cross-referencing and validation (`space_id`).
+
+---
+
+## 📋 Response Structures & Deterministic Nulls
+
+### Standard Extraction Payload
 
 ```json
 {
@@ -109,107 +178,107 @@ All successful standard extraction requests return a standardized JSON structure
     {
       "numero_factura": "F-2026-00456",
       "fecha_emision": "2026-03-14",
-      "proveedor": "Suministros S.L.",
+      "fecha_vencimiento": null,
+      "proveedor": "Suministros Industriales S.L.",
       "importe_total": 1284.50
     }
   ]
 }
 ```
-*(Note: `excel-json` responses also include a `mapa_columnas` object detailing header mappings).*
 
-### Agent Mode Response
-When calling an `/agent/*` endpoint, the response includes the standard `data` array **PLUS** an `agent_data` object containing your inferred, type-safe answers:
+### Knowledge Space Cross-Document Response
 
 ```json
 {
-  "success": true,
-  "schema_utilizado": "Revisión de Contratos Legales",
-  "total_registros": 1,
-  "data": [
-    {
-      "nombre_arrendatario": "Laura Fernández",
-      "renta_mensual": 950.00
-    }
+  "user_ask": [
+    "Which supplier billed the highest total amount?",
+    "Is there any contract whose price does not match its invoice?"
   ],
-  "agent_data": {
-    "clausula_penalizacion": true,
-    "es_renovacion_automatica": false,
-    "tipo_contrato": "indefinido",
-    "resumen_agent": "Contrato de alquiler estándar sin cláusulas abusivas detectadas."
-  }
+  "ia_response": [
+    "Suministros Omega S.A., with 48,320 € across three invoices.",
+    "Yes: contract_omega.pdf specifies 12,000 € but invoice_march.pdf charges 13,450 €."
+  ]
 }
 ```
+> **Deterministic Nulls:** If a requested field or question has no direct textual evidence in the documents, Claix returns a native `null` rather than hallucinating plausible values.
 
 ---
 
-## 🚨 Error Codes
+## 🚨 Error Handling
 
-Claix provides semantic HTTP status codes for easy debugging:
+Claix uses standard HTTP status codes:
 
-* **400: Bad Request:** Missing file, unsupported format, invalid UUID, or calling an `/agent/` endpoint with a schema that does not have `is_agent_mode` activated.
-* **401: Unauthorized:** Invalid, inactive, or suspended API key.
-* **404: Not Found:** Schema ID does not exist or doesn't belong to the account.
-* **405: Method Not Allowed:** Usually means you are using GET instead of POST.
-* **413: Payload Too Large:** Exceeds file size limits (10MB/15MB) or 300k char limit.
-* **422: Unprocessable Entity:** Illegible image, no matching columns found, or no data extracted.
-* **500: Internal Server Error:** Claix platform error.
-* **502: Bad Gateway:** AI service timeout, extraction failure, or Gemini agent phase failure.
+| Status Code | Reason & Troubleshooting |
+|---|---|
+| `400 Bad Request` | Missing file, invalid JSON, exceeding 5 questions, or schema without `is_agent_mode`. |
+| `401 Unauthorized` | Missing, inactive, or suspended API key. |
+| `404 Not Found` | Schema, Document ID, or Space ID does not exist or belongs to another account. |
+| `405 Method Not Allowed` | Incorrect HTTP method (e.g., using `GET` instead of `POST`). |
+| `413 Payload Too Large` | Exceeds file limits (10 MB for Docs, 15 MB for PDF/Img) or 300k characters. |
+| `422 Unprocessable Entity` | Illegible/blurry image, or no matching data found for the given schema. |
+| `500 Internal Server Error` | Claix platform server error. |
+| `502 Bad Gateway` | AI vision engine or LLM reasoning provider timeout. |
 
 ---
 
-## 💻 Usage Examples
+## 💻 Quick Code Examples
 
-### Node.js (Standard PDF to JSON)
-
-```javascript
-const fs = require('fs');
-
-async function parsePdf() {
-  const formData = new FormData();
-  formData.append('schema_id', '3c7a9f21-4b8e-4d1a-9c6f-2e0d8a5b7c4f');
-  formData.append('file', new Blob([fs.readFileSync('./invoice.pdf')]), 'invoice.pdf');
-
-  const response = await fetch('[https://claix.dev/api/pdf-json](https://claix.dev/api/pdf-json)', {
-    method: 'POST',
-    headers: {
-      'x-api-key': process.env.CLAIX_API_KEY
-    },
-    body: formData
-  });
-
-  const result = await response.json();
-  console.log(result.data);
-}
-```
-
-### Python (Agent Mode PDF to JSON)
+### LangGraph / LangChain Tool Integration
 
 ```python
-import requests
+from claix.integrations.langchain import ClaixExtractTool, ClaixSpaceContextTool
+from langgraph.prebuilt import create_react_agent
+from langchain_openai import ChatOpenAI
 
-url = "[https://claix.dev/agent/pdf-json](https://claix.dev/agent/pdf-json)"
-headers = {
-    "x-api-key": "YOUR_API_KEY"
-}
-payload = {
-    "schema_id": "b980cfe7-61ef-4a5a-9724-881c8a5541e2"
-}
-files = {
-    "file": open("./contract.pdf", "rb")
-}
+tools = [
+    ClaixExtractTool(api_key="YOUR_API_KEY"),
+    ClaixSpaceContextTool(api_key="YOUR_API_KEY")
+]
 
-response = requests.post(url, headers=headers, data=payload, files=files)
-result = response.json()
+model = ChatOpenAI(model="gpt-4o")
+agent = create_react_agent(model, tools)
+```
 
-# Extracted structured data
-print(result["data"]) 
+### CrewAI Multi-Agent Setup
 
-# Type-safe semantic reasoning responses
-print(result["agent_data"]) 
+```python
+from crewai import Agent, Task, Crew
+from claix.integrations.crewai import ClaixKnowledgeSpaceTool
+
+space_tool = ClaixKnowledgeSpaceTool(
+    api_key="YOUR_API_KEY",
+    space_id="5b9e2c14-7d3a-4f8b-9e1c-6a0d4b8f2e7c"
+)
+
+auditor = Agent(
+    role="Financial Auditor",
+    goal="Reconcile invoices against supplier agreements",
+    backstory="Senior auditor utilizing Claix Knowledge Spaces for zero-hallucination document cross-referencing.",
+    tools=[space_tool]
+)
+```
+
+### Node.js (cURL / Fetch)
+
+```javascript
+const formData = new FormData();
+formData.append('schema_id', '3c7a9f21-4b8e-4d1a-9c6f-2e0d8a5b7c4f');
+formData.append('file', new Blob([fs.readFileSync('./invoice.pdf')]), 'invoice.pdf');
+formData.append('space_id', '5b9e2c14-7d3a-4f8b-9e1c-6a0d4b8f2e7c'); // Optional
+
+const response = await fetch('[https://claix.dev/api/pdf-json](https://claix.dev/api/pdf-json)', {
+  method: 'POST',
+  headers: { 'x-api-key': process.env.CLAIX_API_KEY },
+  body: formData
+});
+
+const result = await response.json();
+console.log(result.data);
 ```
 
 ---
 
 ## 🛡️ Security & Privacy
-
-We process data in memory. Your documents are never stored, saved, or used to train external models. Read our full Data Processing Agreement (DPA) on our website.
+* **Isolated Multi-Tenancy:** Knowledge spaces and document context windows are partitioned cryptographically by account API keys.
+* **No Model Training:** Customer document data is never used to train third-party foundation models.
+* **Controlled Retention:** Temporary context windows auto-expire after workflow completion; persistent documents and spaces can be purged immediately via `DELETE` endpoints.
